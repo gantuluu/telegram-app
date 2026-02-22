@@ -1,54 +1,53 @@
-const { TelegramClient, Api } = require("telegram");
+const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const express = require("express");
-const cors = require("cors");
 
 const app = express();
+app.use(express.json());
 
 const apiId = parseInt(process.env.TG_API_ID);
 const apiHash = process.env.TG_API_HASH;
-const stringSession = new StringSession(process.env.STRING_SESSION);
 
-const client = new TelegramClient(stringSession, apiId, apiHash, {
-    connectionRetries: 5,
-});
-
-app.use(cors());
-app.use(express.json());
+let client;
+let stringSession = new StringSession("");
 
 app.get("/", (req, res) => {
-    res.send("Server Telegram Aktif 🚀");
+  res.send("Login Mode Aktif");
 });
 
-app.get("/api/contacts", async (req, res) => {
-    try {
-        if (!client.connected) {
-            await client.connect();
-        }
+app.post("/start-login", async (req, res) => {
+  const { phone } = req.body;
 
-        const result = await client.invoke(
-            new Api.contacts.GetContacts({ hash: 0 })
-        );
+  client = new TelegramClient(stringSession, apiId, apiHash, {
+    connectionRetries: 5,
+  });
 
-        const contacts = result.users.map(user => ({
-            id: user.id.toString(),
-            firstName: user.firstName || "",
-            lastName: user.lastName || "",
-            username: user.username || null,
-            phone: user.phone || ""
-        }));
+  await client.connect();
+  await client.sendCode(
+    { apiId, apiHash },
+    phone
+  );
 
-        res.json({ success: true, data: contacts });
+  res.json({ message: "Kode OTP dikirim ke Telegram" });
+});
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: error.message });
-    }
+app.post("/verify-code", async (req, res) => {
+  const { phone, code } = req.body;
+
+  await client.signIn({
+    phoneNumber: phone,
+    phoneCode: code,
+  });
+
+  const sessionString = client.session.save();
+
+  res.json({
+    message: "Login berhasil",
+    stringSession: sessionString,
+  });
 });
 
 const port = process.env.PORT || 3000;
-
-app.listen(port, async () => {
-    console.log(`Server running on port ${port}`);
-    await client.connect();
+app.listen(port, () => {
+  console.log("Server Login Mode Aktif");
 });
